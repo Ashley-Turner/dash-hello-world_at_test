@@ -1,0 +1,12 @@
+parameters:
+- name: templateFileName
+  type: string
+
+steps:
+  - download: current
+    artifact: infra
+      
+  - script: |
+      az bicep build --file '$(Pipeline.Workspace)/infra/infrastructure/${{parameters.templateFileName}}'
+    name: LintBicepCode
+    displayName: Run Bicep linter

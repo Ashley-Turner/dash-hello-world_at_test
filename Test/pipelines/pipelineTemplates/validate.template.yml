@@ -1,0 +1,44 @@
+parameters:
+- name: resourceGroupName
+  type: string
+- name: serviceConnectionName
+  type: string
+- name: location
+  type: string
+  default: uksouth
+- name: templateFileName
+  type: string
+- name: templateParametersFileName
+  type: string
+ 
+steps:
+  - download: current
+    artifact: infra
+
+  - task: replacetokens@5
+    inputs:
+      targetFiles: '$(Pipeline.Workspace)/infra/infrastructure/parameters/${{parameters.templateParametersFileName}}'
+      encoding: 'auto'
+      tokenPattern: 'default'
+      writeBOM: true
+      actionOnMissing: 'fail'
+      keepToken: false
+      actionOnNoFiles: 'continue'
+      enableTransforms: false
+      enableRecursion: false
+      useLegacyPattern: false
+      enableTelemetry: true
+
+  - task: AzureResourceManagerTemplateDeployment@3
+    name: RunPreflightValidation
+    displayName: Run preflight validation
+    inputs:
+      deploymentScope: 'Resource Group'
+      azureResourceManagerConnection: '${{parameters.serviceConnectionName}}'
+      location: '${{parameters.location}}'
+      action: 'Create Or Update Resource Group'
+      resourceGroupName: '${{parameters.resourceGroupName}}'
+      templateLocation: 'Linked artifact'
+      csmFile: '$(Pipeline.Workspace)/infra/infrastructure/${{parameters.templateFileName}}'
+      csmParametersFile: '$(Pipeline.Workspace)/infra/infrastructure/parameters/${{parameters.templateParametersFileName}}'
+      deploymentMode: 'Validation'

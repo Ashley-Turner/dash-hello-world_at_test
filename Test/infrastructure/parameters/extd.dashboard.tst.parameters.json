@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "tst"
+    },
+    "workload": {
+      "value": "extd"
+    },
+    "orgId": {
+      "value": "dluhc"
+    },
+    "dashboardName": {
+      "value": "#{dashboardName}#"
+    },
+    "clientId": {
+      "value": "#{clientId}#"
+    },
+    "clientSecret": {
+      "value": "#{clientSecret}#"
+    },
+    "locationAlias": {
+      "value": "uks"
+    },
+    "pythonVersion": {
+      "value": "3.9"
+    }
+  }
+}

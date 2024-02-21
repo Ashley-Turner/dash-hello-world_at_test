@@ -1,0 +1,53 @@
+parameters:
+- name: location
+  type: string
+  default: uksouth
+- name: workload
+  type: string
+  default: 'extd'
+- name: workloadIdentifier
+  type: string
+- name: groupMembers
+  type: string
+
+stages:
+
+- stage: Build
+  jobs: 
+    - job: Build
+      steps:
+      - template: pipelineTemplates/infra/build.template.yml
+      - template: pipelineTemplates/infra/lint.template.yml
+        parameters:
+          templateFileName: '${{parameters.workload}}.dashboard.bicep'
+
+- stage: Dev  
+  jobs:
+    - template: pipelineTemplates/infra/dashboard.infra.template.yml
+      parameters:
+        environmentType: 'dev'
+        location: ${{parameters.location}}
+        workload: ${{parameters.workload}}
+        workloadIdentifier: ${{parameters.workloadIdentifier}}
+        groupMembers: ${{parameters.groupMembers}}
+        
+
+- stage: Test  
+  jobs:
+    - template: pipelineTemplates/infra/dashboard.infra.template.yml
+      parameters:
+        environmentType: 'tst'
+        location: ${{parameters.location}}
+        workload: ${{parameters.workload}}
+        workloadIdentifier: ${{parameters.workloadIdentifier}}
+        groupMembers: ${{parameters.groupMembers}}
+
+- stage: Prod  
+  jobs:
+    - template: pipelineTemplates/infra/dashboard.infra.template.yml
+      parameters:
+        environmentType: 'prd'
+        location: ${{parameters.location}}
+        workload: ${{parameters.workload}}
+        workloadIdentifier: ${{parameters.workloadIdentifier}}
+        groupMembers: ${{parameters.groupMembers}}

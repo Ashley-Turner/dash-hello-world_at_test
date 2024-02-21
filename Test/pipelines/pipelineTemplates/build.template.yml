@@ -1,0 +1,10 @@
+steps:
+  - task: CopyFiles@2
+    displayName: 'Create infrastructure artifact'
+    inputs:
+      Contents: 'infrastructure/**'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)/infra'
+
+  - publish: '$(Build.ArtifactStagingDirectory)/infra'
+    displayName: 'Publish infrastructure artifact'
+    artifact: infra

@@ -1,0 +1,17 @@
+pr:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+- name: groupMembers
+  displayName: Group Members (Semicolon seperated email addresses)
+  type: string
+  default: "admin@dataforinsights.onmicrosoft.com"
+
+extends:
+  template: dashboard.infra.stage.yml
+  parameters:
+    workloadIdentifier: $(workloadIdentifier)
+    groupMembers: ${{parameters.groupMembers}}

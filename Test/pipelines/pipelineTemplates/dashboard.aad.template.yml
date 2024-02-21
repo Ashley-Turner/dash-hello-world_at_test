@@ -1,0 +1,229 @@
+parameters:
+- name: environmentType
+  type: string
+- name: resourceGroupName
+  type: string
+- name: serviceConnectionName
+  type: string
+- name: location
+  type: string
+  default: uksouth
+- name: workload
+  type: string
+- name: workloadIdentifier
+  type: string
+- name: groupMembers
+  type: string
+
+steps:
+  - task: AzurePowerShell@5
+    displayName: "Azure AD Group Creation"
+    name: "AzureADGroup"
+    inputs:
+      azureSubscription: '${{parameters.serviceConnectionName}}'
+      ScriptType: 'InlineScript'
+      Inline: |
+        $name = 'azgrp-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}'
+        $groupMembers = '${{parameters.groupMembers}}'.Split(";")
+        Write-Output "Group Name: ${name}"
+        $token = (Get-AzAccessToken -ResourceUrl https://graph.microsoft.com).Token
+        $headers = @{'Content-Type' = 'application/json'; 'Authorization' = 'Bearer ' + $token}
+        $group = (Invoke-RestMethod -Method Get -Headers $headers -Uri "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$name'").value
+        if ($group) {
+          $objId = $group[0].id
+          Write-Output "Group exists, ObjectID: ${objId}"
+        }
+        else {
+          $body = @{
+            "displayName"     = $name
+            "mailEnabled"     = $false
+            "mailNickname"    = $name
+            "securityEnabled" = $true
+          }
+          Write-Output "Group does not exist, creating..."
+          $objId = (Invoke-RestMethod -Method Post -Headers $headers -Uri "https://graph.microsoft.com/v1.0/groups" -Body ($body | ConvertTo-Json)).id
+          Write-Output "Group created, ObjectID: ${objId}"
+        }
+
+        # Group Members
+        $existingMembers = (Invoke-RestMethod -Method Get -Headers $headers -Uri "https://graph.microsoft.com/v1.0/groups/$objId/members").value
+        foreach($groupMember in $groupMembers) {
+            $user = (Invoke-RestMethod -Method Get -Headers $headers -Uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$groupMember'").value
+            if ($user) {
+                $userId = $user[0].id
+                if ($userId -notin $existingMembers.id) {
+                    Write-Output "Adding $groupMember to group"
+                    Invoke-RestMethod -Method Post -Headers $headers -Uri "https://graph.microsoft.com/v1.0/groups/$objId/members/`$ref" -Body (@{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$userId" } | ConvertTo-Json)
+                }
+                else {
+                    Write-Output "User is already a member: $groupMember"
+                }
+            }
+            else {
+                Write-Output "User does not exist: $groupMember"
+            }
+        }
+
+        Write-Host "##vso[task.setvariable variable=groupId;]$objId"
+      azurePowerShellVersion: 'LatestVersion'
+
+  - task: AzurePowerShell@5
+    displayName: "Azure App Registration Creation"
+    name: "AzureAppRegistration"
+    inputs:
+      azureSubscription: '${{parameters.serviceConnectionName}}'
+      ScriptType: 'InlineScript'
+      Inline: |
+        function Call-MSGraph {
+            param (
+                [Parameter(Mandatory = $true)][string]$Method,
+                [Parameter(Mandatory = $true)][string]$Resource,
+                [Parameter(Mandatory = $false)][string]$Filter,
+                [Parameter(Mandatory = $false)][Object]$Body
+            )
+            $uri = "https://graph.microsoft.com/v1.0/$Resource"
+            if ($Filter) {
+                $uri = $uri + "?`$filter=$Filter"
+            }
+            $token = (Get-AzAccessToken -ResourceUrl https://graph.microsoft.com).Token
+            $headers = @{'Content-Type' = 'application/json'; 'Authorization' = 'Bearer ' + $token }
+            try {
+                if ($Body) {
+                    $response = Invoke-RestMethod -Method $Method -Headers $headers -Uri $uri -Body ($Body | ConvertTo-Json -Depth 20)
+                }
+                else {
+                    $response = Invoke-RestMethod -Method $Method -Headers $headers -Uri $uri
+                }
+                return $response
+            }
+            catch {
+                Write-Host $Error[0]
+                throw
+            }    
+        }
+
+        $name = 'app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}-01'
+        Write-Output "App Reg Name: ${name}"
+        $now = Get-Date
+
+        $appTemplate = @{
+            api                    = @{
+                oauth2PermissionScopes = @(
+                    @{
+                        adminConsentDescription = "Allow the application to access app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}} on behalf of the signed-in user."
+                        adminConsentDisplayName = "Access app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}"
+                        id                      = (New-Guid).Guid
+                        isEnabled               = $true
+                        type                    = "User"
+                        userConsentDescription  = "Allow the application to access app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}} on your behalf."
+                        userConsentDisplayName  = "Access app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}"
+                        value                   = "user_impersonation"
+                    }
+                )
+            }
+            displayName            = $name
+            requiredResourceAccess = @(
+                @{
+                    resourceAppId  = "00000003-0000-0000-c000-000000000000"
+                    resourceAccess = @(
+                        @{
+                            id   = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"
+                            type = "Scope"
+                        }
+                    )
+                }
+            )
+            signInAudience         = "AzureADMyOrg"
+            web                    = @{
+                homePageUrl           = "https://app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}-01.azurewebsites.net"
+                redirectUris          = @(
+                    "https://app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}-01.azurewebsites.net/.auth/login/aad/callback",
+                    "https://app-dluhc-uks-${{parameters.workload}}-${{parameters.workloadIdentifier}}-${{parameters.environmentType}}-01-staging.azurewebsites.net/.auth/login/aad/callback"
+                )
+                implicitGrantSettings = @{
+                    enableIdTokenIssuance     = $true
+                    enableAccessTokenIssuance = $false
+                }
+            }
+        }
+
+        ##########################
+        # App Creation
+        ##########################
+        $app = (Call-MSGraph -Method "Get" -Resource "applications" -Filter "displayName eq '$name'").value
+        if ($app) {
+            $id = $app[0].id
+            $appId = $app[0].appId
+            $principal = (Call-MSGraph -Method "Get" -Resource "servicePrincipals" -Filter "appId eq '$appId'").value
+            Write-Output "App exists, appId: ${appId}"
+        }
+        else {
+            Write-Output "App does not exist, creating..."
+            $app = Call-MSGraph -Method "Post" -Resource "applications" -Body $appTemplate
+            $id = $app.id
+            $appId = $app.appId
+            Call-MSGraph -Method "Patch" -Resource "applications/$id" -Body @{ identifierUris = @("api://$appId") }        
+            $principal = Call-MSGraph -Method "Post" -Resource "servicePrincipals" -Body @{ accountEnabled = $true; appId = $appId; appRoleAssignmentRequired = $true }
+            Write-Output "App created, appId: ${appId}"
+        }
+
+        ##########################
+        # Secret Generation
+        ##########################
+        $secretTemplate = @{
+            passwordCredential = @{
+                displayName   = "Generated by App Service: $now"
+                startDateTime = $now.ToUniversalTime().ToString("o")
+                endDateTime   = $now.AddYears(10).ToUniversalTime().ToString("o")
+            }
+        }
+
+        Write-Output "Adding secret..."
+        $clientSecret = (Call-MSGraph -Method "Post" -Resource "applications/$id/addPassword" -Body $secretTemplate).secretText
+
+        ##########################
+        # Group Assignment 
+        ##########################
+        Write-Output "Adding group..."
+        $principalId = $principal.id
+        Write-Output "PrincipalId: ${principalId}"
+        $roles = (Call-MSGraph -Method "Get" -Resource "servicePrincipals/$principalId/appRoleAssignedTo").value | Where-Object { $_.principalId -eq '$(GroupId)' }
+        if ($roles) {
+            Write-Output "Role already exists"
+        }
+        else {
+            $roleTemplate = @{
+                "appRoleId"   = "00000000-0000-0000-0000-000000000000" # Default Role
+                "principalId" = "$(groupId)"
+                "resourceId"  = $principalId
+            }
+            Call-MSGraph -Method "Post" -Resource "servicePrincipals/$principalId/appRoleAssignedTo" -Body $roleTemplate
+            Write-Output "Group successfully added"
+        }
+
+        ##########################
+        # Grant Admin Consent
+        ##########################
+        Write-Output "Granting consent..."
+        $grantBody = @{
+            clientId    = $principalId
+            consentType = "AllPrincipals"
+            principalId = $null
+            resourceId  = "50a69d46-87fd-4305-88b1-4046cefa00ee" # Object ID For Microsoft Graph
+            scope       = "User.Read"
+        }
+        $grants = (Call-MSGraph -Method "Get" -Resource "oauth2PermissionGrants").value | Where-Object { $_.clientId -eq $grantBody.clientId -and $_.consentType -eq $grantBody.consentType -and $_.resourceId -eq $grantBody.resourceId -and $_.scope -eq $grantBody.scope }
+        if ($grants) {
+            Write-Output "Grant already exists"
+        }
+        else {
+            Call-MSGraph -Method "Post" -Resource "oauth2PermissionGrants" -Body $grantBody
+            Write-Output "Consent granted"
+        }
+
+        ##########################
+        # Set Output Variables
+        ##########################
+        Write-Host "##vso[task.setvariable variable=clientId;isOutput=true;issecret=true]$appId"
+        Write-Host "##vso[task.setvariable variable=clientSecret;isOutput=true;issecret=true]$clientSecret"
+      azurePowerShellVersion: 'LatestVersion'

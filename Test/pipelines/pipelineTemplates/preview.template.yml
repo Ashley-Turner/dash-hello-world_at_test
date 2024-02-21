@@ -1,0 +1,43 @@
+parameters:
+- name: resourceGroupName
+  type: string
+- name: serviceConnectionName
+  type: string
+- name: location
+  type: string
+  default: uksouth
+- name: templateFileName
+  type: string
+- name: templateParametersFileName
+  type: string
+
+steps:
+  - download: current
+    artifact: infra
+
+  - task: replacetokens@5
+    inputs:
+      targetFiles: '$(Pipeline.Workspace)/infra/infrastructure/parameters/${{parameters.templateParametersFileName}}'
+      encoding: 'auto'
+      tokenPattern: 'default'
+      writeBOM: true
+      actionOnMissing: 'fail'
+      keepToken: false
+      actionOnNoFiles: 'continue'
+      enableTransforms: false
+      enableRecursion: false
+      useLegacyPattern: false
+      enableTelemetry: true
+
+  - task: AzureCLI@2
+    name: RunWhatIf
+    displayName: Run what-if
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az deployment group what-if \
+          --resource-group ${{parameters.resourceGroupName}} \
+          --template-file '$(Pipeline.Workspace)/infra/infrastructure/${{parameters.templateFileName}}' \
+          --parameters '$(Pipeline.Workspace)/infra/infrastructure/parameters/${{parameters.templateParametersFileName}}'

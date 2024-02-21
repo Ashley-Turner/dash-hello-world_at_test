@@ -1,0 +1,91 @@
+parameters:
+- name: environmentType
+  type: string
+- name: location
+  type: string
+  default: uksouth
+- name: workload
+  type: string
+- name: workloadIdentifier
+  type: string
+- name: groupMembers
+  type: string
+
+
+jobs:
+  - job: 'job_deploy_aad_${{parameters.environmentType}}'
+    displayName: 'Deploy AAD Resources'
+    steps:
+      - template: dashboard.aad.template.yml
+        parameters:
+          environmentType: ${{parameters.environmentType}}
+          serviceConnectionName: 'DLUHC-${{parameters.environmentType}}'
+          resourceGroupName: 'rg-dluhc-uks-${{parameters.workload}}-${{parameters.environmentType}}'
+          location: ${{parameters.location}}
+          workload: ${{parameters.workload}}
+          workloadIdentifier: ${{parameters.workloadIdentifier}}
+          groupMembers: ${{parameters.groupMembers}}
+
+  - job: 'job_validate_bicep_${{parameters.environmentType}}'
+    condition: and(succeeded(), eq('${{parameters.environmentType}}', 'dev'))
+    dependsOn: ['job_deploy_aad_${{parameters.environmentType}}']
+    variables:
+    - name: clientId 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientId'] ]
+    - name: clientSecret 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientSecret'] ]
+    - name: dashboardName 
+      value: ${{parameters.workloadIdentifier}}
+    displayName: 'Validate Bicep code'
+    steps:
+      - template: validate.template.yml
+        parameters:
+          serviceConnectionName: 'DLUHC-${{parameters.environmentType}}'
+          resourceGroupName: 'rg-dluhc-uks-${{parameters.workload}}-${{parameters.environmentType}}'
+          location: ${{parameters.location}}
+          templateFileName: '${{parameters.workload}}.dashboard.bicep'
+          templateParametersFileName: '${{parameters.workload}}.dashboard.${{parameters.environmentType}}.parameters.json'
+
+  - job: 'job_preview_bicep_${{parameters.environmentType}}'
+    condition: and(ne('${{parameters.environmentType}}', 'dev'),in(dependencies.job_validate_bicep_${{parameters.environmentType}}.result, 'Succeeded', 'Skipped'))
+    dependsOn: ['job_validate_bicep_${{parameters.environmentType}}','job_deploy_aad_${{parameters.environmentType}}']
+    variables:
+    - name: clientId 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientId'] ]
+    - name: clientSecret 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientSecret'] ]
+    - name: dashboardName 
+      value: ${{parameters.workloadIdentifier}}
+    displayName: 'Preview Bicep changes'
+    steps:
+      - template: preview.template.yml
+        parameters:
+          serviceConnectionName: 'DLUHC-${{parameters.environmentType}}'
+          resourceGroupName: 'rg-dluhc-uks-${{parameters.workload}}-${{parameters.environmentType}}'
+          location: ${{parameters.location}}
+          templateFileName: '${{parameters.workload}}.dashboard.bicep'
+          templateParametersFileName: '${{parameters.workload}}.dashboard.${{parameters.environmentType}}.parameters.json'
+
+  - deployment: 'job_deploy_bicep_${{parameters.environmentType}}'
+    dependsOn: ['job_preview_bicep_${{parameters.environmentType}}','job_deploy_aad_${{parameters.environmentType}}']
+    condition: and(eq(dependencies.job_deploy_aad_${{parameters.environmentType}}.result, 'Succeeded'), and(in(dependencies.job_preview_bicep_${{parameters.environmentType}}.result, 'Succeeded', 'Skipped'), in(dependencies.job_validate_bicep_${{parameters.environmentType}}.result, 'Succeeded', 'Skipped')))
+    variables:
+    - name: clientId 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientId'] ]
+    - name: clientSecret 
+      value: $[ dependencies.job_deploy_aad_${{parameters.environmentType}}.outputs['AzureAppRegistration.clientSecret'] ]
+    - name: dashboardName 
+      value: ${{parameters.workloadIdentifier}}
+    displayName: 'Deploy Bicep code'
+    environment: ${{parameters.environmentType}}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - template: deploy.template.yml
+              parameters:
+                serviceConnectionName: 'DLUHC-${{parameters.environmentType}}'
+                resourceGroupName: 'rg-dluhc-uks-${{parameters.workload}}-${{parameters.environmentType}}'
+                location: ${{parameters.location}}
+                templateFileName: '${{parameters.workload}}.dashboard.bicep'
+                templateParametersFileName: '${{parameters.workload}}.dashboard.${{parameters.environmentType}}.parameters.json'
