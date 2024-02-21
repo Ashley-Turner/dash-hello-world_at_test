@@ -1,0 +1,20 @@
+parameters:
+- name: pythonVersion
+  type: string
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '${{parameters.pythonVersion}}'
+    displayName: 'Use Python ${{parameters.pythonVersion}}'
+
+  - bash: echo "##vso[task.prependpath]$CONDA/bin"
+    displayName: Add conda to PATH
+
+  - script: conda env create --quiet --file environment.yml --name data_dashboards
+    displayName: Create Anaconda environment
+    
+  - script: |
+      source activate data_dashboards
+      python -u -m pytest --headless tests --ignore=tests/data_qa/ --ignore=tests/visual/
+    displayName: "Execute tests"

@@ -1,0 +1,103 @@
+parameters:
+- name: resourceGroupName
+  type: string
+- name: serviceConnectionName
+  type: string
+- name: webAppName
+  type: string
+- name: storageConnectionString
+  type: string
+- name: sentryDsn
+  type: string
+
+steps:
+  - download: current
+    artifact: app
+
+  - task: AzureAppServiceSettings@1
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}} 
+      appName: ${{parameters.webAppName}}
+      resourceGroupName: ${{parameters.resourceGroupName}}
+      slotName: 'staging'
+      appSettings: |
+        [
+          {
+            "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+            "value": "true",
+            "slotSetting": false
+          },
+          {
+            "name": "AZURE_STORAGE_CONNECTION_STRING",
+            "value": "${{parameters.storageConnectionString}}",
+            "slotSetting": false
+          },
+          {
+            "name": "OFLOG_PLATFORM",
+            "value": "azure",
+            "slotSetting": false
+          },
+          {
+            "name": "STAGE",
+            "value": "production",
+            "slotSetting": false
+          },
+          {
+            "name": "SENTRY_DSN",
+            "value": "${{parameters.sentryDsn}}",
+            "slotSetting": false
+          }
+        ]
+
+  - task: AzureAppServiceSettings@1
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}} 
+      appName: ${{parameters.webAppName}}
+      resourceGroupName: ${{parameters.resourceGroupName}}
+      slotName: 'production'
+      appSettings: |
+        [
+          {
+            "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+            "value": "true",
+            "slotSetting": false
+          },
+          {
+            "name": "AZURE_STORAGE_CONNECTION_STRING",
+            "value": "${{parameters.storageConnectionString}}",
+            "slotSetting": false
+          },
+          {
+            "name": "OFLOG_PLATFORM",
+            "value": "azure",
+            "slotSetting": false
+          },
+          {
+            "name": "STAGE",
+            "value": "production",
+            "slotSetting": false
+          },
+          {
+            "name": "SENTRY_DSN",
+            "value": "${{parameters.sentryDsn}}",
+            "slotSetting": false
+          }
+        ]
+
+  - task: AzureWebApp@1
+    displayName: 'Pushing python application to ${{parameters.webAppName}} '
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}}
+      resourceGroupName: ${{parameters.resourceGroupName}}
+      appName: ${{parameters.webAppName}}
+      package: $(Pipeline.Workspace)/app/$(Build.BuildId).zip
+      deployToSlotOrASE: true
+      slotName: staging
+
+  - task: AzureAppServiceManage@0
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}}
+      WebAppName: '${{parameters.webAppName}}'
+      ResourceGroupName: '${{parameters.resourceGroupName}}'
+      SourceSlot: staging
+      SwapWithProduction: true

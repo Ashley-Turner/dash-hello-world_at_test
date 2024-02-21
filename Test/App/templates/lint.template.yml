@@ -1,0 +1,25 @@
+parameters:
+- name: pythonVersion
+  type: string
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '${{parameters.pythonVersion}}'
+    displayName: 'Use Python ${{parameters.pythonVersion}}'
+
+  - bash: echo "##vso[task.prependpath]$CONDA/bin"
+    displayName: Add conda to PATH
+
+  - script: conda env create --quiet --file environment.yml --name data_dashboards
+    displayName: Create Anaconda environment
+
+  - bash: |
+      source activate data_dashboards
+      python -m black ./ --check
+    displayName: "Apply black code formatting"
+
+  - bash: |
+      source activate data_dashboards
+      python -m pylint ./
+    displayName: "Run linter"

@@ -1,0 +1,24 @@
+trigger:
+  - main
+
+pr:
+  - main
+
+variables:
+- group: Oflog-D4i-PoC
+
+pool:
+  vmImage: ubuntu-latest
+
+extends:
+  template: dashboard.app.stage.yml
+  parameters:
+    workloadIdentifier: $(workloadIdentifier)
+    storageConnectionStringDev: $(AZURE_STORAGE_CONNECTION_STRING_DEV)
+    storageConnectionStringProd: $(AZURE_STORAGE_CONNECTION_STRING_PROD)
+    sentryDsnDev: $(SENTRY_DSN_DEV)
+    sentryDsnTest: $(SENTRY_DSN_TEST)
+    sentryDsnProd: $(SENTRY_DSN_PROD)
+    # NOTE: SentryDsn for dev, test and prod are all set to the same for now.
+    #       This is because we are using the same Sentry project for all environments.
+    #       This should be changed in the future.

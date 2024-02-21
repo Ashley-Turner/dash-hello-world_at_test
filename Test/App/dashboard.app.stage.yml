@@ -1,0 +1,90 @@
+parameters:
+- name: workloadIdentifier
+  type: string
+- name: storageConnectionStringDev
+  type: string
+- name: storageConnectionStringProd
+  type: string
+- name: sentryDsnDev
+  type: string
+- name: sentryDsnTest
+  type: string
+- name: sentryDsnProd
+  type: string
+
+stages:
+
+- stage: Build
+  jobs: 
+    - job: Build
+      steps:
+      - template: templates/build.template.yml
+        parameters:
+          pythonVersion: '3.9'
+
+    # - job: Lint
+    #   dependsOn: Build
+    #   condition: succeeded()
+    #   steps:
+    #   - template: templates/lint.template.yml
+    #     parameters:
+    #       pythonVersion: '3.9'
+
+    # - job: Test
+    #   dependsOn: Lint
+    #   condition: succeeded()
+    #   steps:
+    #   - template: templates/test.template.yml
+    #     parameters:
+    #       pythonVersion: '3.9'
+
+- stage: Dev
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+    - deployment: Deploy
+      environment: dev
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: templates/deploy.template.yml
+                parameters:
+                  resourceGroupName: 'rg-dluhc-uks-extd-dev'
+                  serviceConnectionName: 'DLUHC-Dev'
+                  webAppName: app-dluhc-uks-extd-${{parameters.workloadIdentifier}}-dev-01
+                  storageConnectionString: ${{parameters.storageConnectionStringDev}}
+                  sentryDsn: ${{parameters.sentryDsnDev}}
+
+- stage: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+    - deployment: Deploy
+      environment: tst
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: templates/deploy.template.yml
+                parameters:
+                  resourceGroupName: 'rg-dluhc-uks-extd-tst'
+                  serviceConnectionName: 'DLUHC-Tst'
+                  webAppName: app-dluhc-uks-extd-${{parameters.workloadIdentifier}}-tst-01
+                  storageConnectionString: ${{parameters.storageConnectionStringProd}}
+                  sentryDsn: ${{parameters.sentryDsnTest}}
+
+- stage: Prod
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+    - deployment: Deploy
+      environment: prd
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: templates/deploy.template.yml
+                parameters:
+                  resourceGroupName: 'rg-dluhc-uks-extd-prd'
+                  serviceConnectionName: 'DLUHC-Prd'
+                  webAppName: app-dluhc-uks-extd-${{parameters.workloadIdentifier}}-prd-01
+                  storageConnectionString: ${{parameters.storageConnectionStringProd}}
+                  sentryDsn: ${{parameters.sentryDsnProd}}
